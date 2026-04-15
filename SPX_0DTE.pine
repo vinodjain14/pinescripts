@@ -1,70 +1,133 @@
 //@version=5
-indicator("0 DTE SPX Pro: Volatility Signal", overlay=true)
+indicator("0 DTE SPX Pro: Compact View", overlay=true, max_labels_count=500)
 
-// --- 1. Global Security Calls ---
-dailyHigh  = request.security("CBOE:SPX", "D", high[1], lookahead=barmerge.lookahead_on)
-dailyLow   = request.security("CBOE:SPX", "D", low[1], lookahead=barmerge.lookahead_on)
-dailyClose = request.security("CBOE:SPX", "D", close[1], lookahead=barmerge.lookahead_on)
-
-// --- 2. Support & Resistance (Pivot Points) ---
-pivot    = (dailyHigh + dailyLow + dailyClose) / 3
-r1_level = 2 * pivot - dailyLow
-s1_level = 2 * pivot - dailyHigh
-
-// --- 3. Inputs ---
+// --- 1. Inputs ---
 maLength      = input.int(20, "Trend MA")
 atrLength     = input.int(14, "ATR Volatility Period")
-showSR        = input.bool(true, "Show S/R Lines")
+labelOffset   = input.float(1.2, "Label Distance", minval=0.5, step=0.1)
 
-// --- 4. Core Indicators ---
+// --- 2. Core Indicators ---
 ma      = ta.sma(close, maLength)
 rsiVal  = ta.rsi(close, 14)
 [macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
 
-// Volatility Check (ATR Expansion)
+// Volatility Check
 atr = ta.atr(atrLength)
 atrSma = ta.sma(atr, 20)
-volatilityExpansion = atr > atrSma 
+volExpansion = atr > atrSma 
 
-// --- 5. FIXED STOCHASTIC LOGIC ---
-// ta.stoch arguments: (source, high, low, length)
+// --- 3. Momentum Logic ---
 stochRaw = ta.stoch(close, high, low, 14)
-k = ta.sma(stochRaw, 3) // Smooth %K
-d = ta.sma(k, 3)        // Smooth %D
+k = ta.sma(stochRaw, 3) 
+d = ta.sma(k, 3)        
 
-momentumBullish = k > d and k > 40
-momentumBearish = k < d and k < 60
+bullMomentum = k > d and k > 40
+bearMomentum = k < d and k < 60
 
-// --- 6. Dynamic Session Median ---
+// --- 4. Session Median ---
 var float sessionMid = na
 if ta.change(time("D"))
     sessionMid := hl2
 else
     sessionMid := (ta.highest(high, 50) + ta.lowest(low, 50)) / 2
 
-// --- 7. Strategy Logic ---
-bullish = close > ma and rsiVal > 50 and macdLine > signalLine and volatilityExpansion and close > sessionMid and momentumBullish
-bearish = close < ma and rsiVal < 50 and macdLine < signalLine and volatilityExpansion and close < sessionMid and momentumBearish
+// --- 5. Logic ---
+bullish = close > ma and rsiVal > 50 and macdLine > signalLine and volExpansion and close > sessionMid and bullMomentum
+bearish = close < ma and rsiVal < 50 and macdLine < signalLine and volExpansion and close < sessionMid and bearMomentum
 
-// --- Visuals ---
-bgcolor(bullish ? color.new(color.green, 85) : bearish ? color.new(color.red, 85) : na)
-plot(ma, color=color.new(color.blue, 0), title="Trend MA")
-plot(sessionMid, title="Session Median", color=color.new(#81767e, 50), style=plot.style_linebr)
+// --- 6. Visuals ---
+bgcolor(bullish ? color.new(color.green, 93) : bearish ? color.new(color.red, 93) : na)
+plot(ma, color=color.new(color.blue, 60), title="Trend MA")
 
-plot(showSR ? r1_level : na, "Resistance 1", color=color.new(color.red, 40), style=plot.style_stepline)
-plot(showSR ? s1_level : na, "Support 1", color=color.new(color.green, 40), style=plot.style_stepline)
+// --- 7. SMALL COMPACT LABELS ---
+yDist = atr * labelOffset
 
-// Labels
-if barstate.islast and showSR
-    label.new(bar_index + 2, r1_level, "SPX R1: " + str.tostring(r1_level, "#.##"), color=color.red, textcolor=color.white, style=label.style_label_left)
-    label.new(bar_index + 2, s1_level, "SPX S1: " + str.tostring(s1_level, "#.##"), color=color.green, textcolor=color.white, style=label.style_label_left)
+if bullish
+    label.new(bar_index, low - yDist, 
+         text="C:@" + str.tostring(close, "#.##"), 
+         color=color.green, 
+         textcolor=color.white, 
+         style=label.style_label_up, 
+         size=size.small) // Small block size
 
-plotshape(bullish, title="Call Signal", location=location.belowbar, color=color.green, style=shape.labelup, text="CALL")
-plotshape(bearish, title="Put Signal", location=location.abovebar, color=color.red, style=shape.labeldown, text="PUT")
+if bearish
+    label.new(bar_index, high + yDist, 
+         text="P:@" + str.tostring(close, "#.##"), 
+         color=color.red, 
+         textcolor=color.white, 
+         style=label.style_label_down, 
+         size=size.small) // Small block size
 
-// --- 8. Real-Time Dashboard ---
+// --- 8. Small Dashboard ---
 var table statusTable = table.new(position.top_right, 1, 1)
 if barstate.islast
-    table.cell(statusTable, 0, 0, bullish ? "SPX: BULLISH" : bearish ? "SPX: BEARISH" : "WAITING...", 
+    table.cell(statusTable, 0, 0, bullish ? "BULL" : bearish ? "BEAR" : "WAIT", 
          bgcolor = bullish ? color.green : bearish ? color.red : color.gray, 
-         text_color = color.white)
+         text_color = color.white,
+         text_size = size.small)//@version=5
+indicator("0 DTE SPX Pro: Compact View", overlay=true, max_labels_count=500)
+
+// --- 1. Inputs ---
+maLength      = input.int(20, "Trend MA")
+atrLength     = input.int(14, "ATR Volatility Period")
+labelOffset   = input.float(1.2, "Label Distance", minval=0.5, step=0.1)
+
+// --- 2. Core Indicators ---
+ma      = ta.sma(close, maLength)
+rsiVal  = ta.rsi(close, 14)
+[macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
+
+// Volatility Check
+atr = ta.atr(atrLength)
+atrSma = ta.sma(atr, 20)
+volExpansion = atr > atrSma 
+
+// --- 3. Momentum Logic ---
+stochRaw = ta.stoch(close, high, low, 14)
+k = ta.sma(stochRaw, 3) 
+d = ta.sma(k, 3)        
+
+bullMomentum = k > d and k > 40
+bearMomentum = k < d and k < 60
+
+// --- 4. Session Median ---
+var float sessionMid = na
+if ta.change(time("D"))
+    sessionMid := hl2
+else
+    sessionMid := (ta.highest(high, 50) + ta.lowest(low, 50)) / 2
+
+// --- 5. Logic ---
+bullish = close > ma and rsiVal > 50 and macdLine > signalLine and volExpansion and close > sessionMid and bullMomentum
+bearish = close < ma and rsiVal < 50 and macdLine < signalLine and volExpansion and close < sessionMid and bearMomentum
+
+// --- 6. Visuals ---
+bgcolor(bullish ? color.new(color.green, 93) : bearish ? color.new(color.red, 93) : na)
+plot(ma, color=color.new(color.blue, 60), title="Trend MA")
+
+// --- 7. SMALL COMPACT LABELS ---
+yDist = atr * labelOffset
+
+if bullish
+    label.new(bar_index, low - yDist, 
+         text="C:@" + str.tostring(close, "#.##"), 
+         color=color.green, 
+         textcolor=color.white, 
+         style=label.style_label_up, 
+         size=size.small) // Small block size
+
+if bearish
+    label.new(bar_index, high + yDist, 
+         text="P:@" + str.tostring(close, "#.##"), 
+         color=color.red, 
+         textcolor=color.white, 
+         style=label.style_label_down, 
+         size=size.small) // Small block size
+
+// --- 8. Small Dashboard ---
+var table statusTable = table.new(position.top_right, 1, 1)
+if barstate.islast
+    table.cell(statusTable, 0, 0, bullish ? "BULL" : bearish ? "BEAR" : "WAIT", 
+         bgcolor = bullish ? color.green : bearish ? color.red : color.gray, 
+         text_color = color.white,
+         text_size = size.small)
