@@ -1,0 +1,41 @@
+//@version=5
+strategy("Gemini Multi-Indicator Strategy", overlay=true, initial_capital=10000)
+
+// --- INPUTS ---
+emaFastLen = input.int(9, "EMA Fast")
+emaSlowLen = input.int(21, "EMA Slow")
+rsiLen     = input.int(14, "RSI Length")
+tpPercent  = input.float(5.0, "Take Profit %") / 100
+slPercent  = input.float(2.5, "Stop Loss %") / 100
+
+// --- INDICATORS ---
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+rsi = ta.rsi(close, rsiLen)
+[macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
+
+// --- LOGIC ---
+// Buy: Fast EMA > Slow EMA + RSI > 50 + MACD Bullish Cross
+buySignal = ta.crossover(emaFast, emaSlow) and rsi > 50 and macdLine > signalLine
+// Short: Fast EMA < Slow EMA + RSI < 50 + MACD Bearish Cross
+shortSignal = ta.crossunder(emaFast, emaSlow) and rsi < 50 and macdLine < signalLine
+
+// --- EXECUTION & ALERTS ---
+if (buySignal)
+    strategy.entry("Long", strategy.long)
+    alert("BUY ALERT: Indicators aligned bullish for " + syminfo.ticker, alert.freq_once_per_bar)
+
+if (shortSignal)
+    strategy.entry("Short", strategy.short)
+    alert("SHORT ALERT: Indicators aligned bearish for " + syminfo.ticker, alert.freq_once_per_bar)
+
+// --- EXIT STRATEGY (SL/TP) ---
+if (strategy.position_size > 0)
+    strategy.exit("Long Exit", "Long", limit=strategy.position_avg_price * (1 + tpPercent), stop=strategy.position_avg_price * (1 - slPercent))
+
+if (strategy.position_size < 0)
+    strategy.exit("Short Exit", "Short", limit=strategy.position_avg_price * (1 - tpPercent), stop=strategy.position_avg_price * (1 + slPercent))
+
+// Plotting for visual confirmation
+plot(emaFast, color=color.blue, title="Fast EMA")
+plot(emaSlow, color=color.orange, title="Slow EMA")

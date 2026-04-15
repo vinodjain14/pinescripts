@@ -1,0 +1,81 @@
+//@version=5
+indicator("0 DTE SPY Pro: Instant Signal", overlay=true)
+
+// --- 1. Global Security Calls ---
+// This fetches data from the current chart (SPY) for the previous day
+dailyHigh  = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
+dailyLow   = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
+dailyClose = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+
+// --- 2. Support & Resistance (Pivot Points) ---
+pivot    = (dailyHigh + dailyLow + dailyClose) / 3
+r1_level = 2 * pivot - dailyLow
+s1_level = 2 * pivot - dailyHigh
+
+// --- 3. Inputs ---
+maLength      = input.int(20, "Trend MA")
+volMultiplier = input.float(1.2, "Volume Spike Multiplier")
+showSR        = input.bool(true, "Show S/R Lines")
+
+// --- 4. Core Indicators ---
+ma      = ta.sma(close, maLength)
+vwapVal = ta.vwap(hlc3)
+rsiVal  = ta.rsi(close, 14)
+[macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
+volCheck = volume > ta.sma(volume, 20) * volMultiplier
+
+// --- 5. Order Flow Logic ---
+barRange = high - low
+buyVolume  = barRange > 0 ? (close - low) / barRange * volume : volume / 2
+isNetBuying = buyVolume > (volume / 2)
+
+// --- 6. Dynamic POC (Point of Control) ---
+var float sessionPOC = na
+var float maxVol = 0.0
+if ta.change(time("D"))
+    maxVol := 0.0
+    sessionPOC := na
+if volume > maxVol
+    maxVol := volume
+    sessionPOC := close
+
+// --- 7. Strategy Logic (Real-Time) ---
+bullish = close > ma and close > vwapVal and rsiVal > 50 and macdLine > signalLine and volCheck and close > sessionPOC and isNetBuying
+bearish = close < ma and close < vwapVal and rsiVal < 50 and macdLine < signalLine and volCheck and close < sessionPOC and not isNetBuying
+
+// --- Visuals ---
+// Background "Flash" for immediate awareness
+bgcolor(bullish ? color.new(color.green, 85) : bearish ? color.new(color.red, 85) : na)
+
+// Trend Lines 
+plot(ma, color=color.new(color.blue, 0), title="Trend MA")
+plot(vwapVal, color=color.new(color.orange, 0), title="VWAP", linewidth=2)
+plot(sessionPOC, title="Session POC", color=color.new(#81767e, 50), style=plot.style_linebr)
+
+// S/R Levels with Price Labels
+plot(showSR ? r1_level : na, "Resistance 1", color=color.new(color.red, 40), style=plot.style_stepline)
+plot(showSR ? s1_level : na, "Support 1", color=color.new(color.green, 40), style=plot.style_stepline)
+
+// Print Price labels on the right for SPY
+var label lblR1 = na
+var label lblS1 = na
+if barstate.islast and showSR
+    label.delete(lblR1)
+    label.delete(lblS1)
+    lblR1 := label.new(bar_index + 2, r1_level, "R1: " + str.tostring(r1_level, "#.##"), color=color.red, textcolor=color.white, style=label.style_label_left)
+    lblS1 := label.new(bar_index + 2, s1_level, "S1: " + str.tostring(s1_level, "#.##"), color=color.green, textcolor=color.white, style=label.style_label_left)
+
+// Shapes on Chart
+plotshape(bullish, title="Call Signal", location=location.belowbar, color=color.green, style=shape.labelup, text="CALL")
+plotshape(bearish, title="Put Signal", location=location.abovebar, color=color.red, style=shape.labeldown, text="PUT")
+
+// --- 8. Real-Time Dashboard (Top Right) ---
+var table statusTable = table.new(position.top_right, 1, 1)
+if barstate.islast
+    table.cell(statusTable, 0, 0, bullish ? "SPY ENTRY: CALL" : bearish ? "SPY ENTRY: PUT" : "WAITING...", 
+         bgcolor = bullish ? color.green : bearish ? color.red : color.gray, 
+         text_color = color.white)
+
+// --- Alerts ---
+alertcondition(bullish, "0 DTE SPY CALL", "SPY Setup Bullish - Instant Flash")
+alertcondition(bearish, "0 DTE SPY PUT", "SPY Setup Bearish - Instant Flash")

@@ -1,0 +1,70 @@
+//@version=5
+indicator("0 DTE SPX Pro: Volatility Signal", overlay=true)
+
+// --- 1. Global Security Calls ---
+dailyHigh  = request.security("CBOE:SPX", "D", high[1], lookahead=barmerge.lookahead_on)
+dailyLow   = request.security("CBOE:SPX", "D", low[1], lookahead=barmerge.lookahead_on)
+dailyClose = request.security("CBOE:SPX", "D", close[1], lookahead=barmerge.lookahead_on)
+
+// --- 2. Support & Resistance (Pivot Points) ---
+pivot    = (dailyHigh + dailyLow + dailyClose) / 3
+r1_level = 2 * pivot - dailyLow
+s1_level = 2 * pivot - dailyHigh
+
+// --- 3. Inputs ---
+maLength      = input.int(20, "Trend MA")
+atrLength     = input.int(14, "ATR Volatility Period")
+showSR        = input.bool(true, "Show S/R Lines")
+
+// --- 4. Core Indicators ---
+ma      = ta.sma(close, maLength)
+rsiVal  = ta.rsi(close, 14)
+[macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
+
+// Volatility Check (ATR Expansion)
+atr = ta.atr(atrLength)
+atrSma = ta.sma(atr, 20)
+volatilityExpansion = atr > atrSma 
+
+// --- 5. FIXED STOCHASTIC LOGIC ---
+// ta.stoch arguments: (source, high, low, length)
+stochRaw = ta.stoch(close, high, low, 14)
+k = ta.sma(stochRaw, 3) // Smooth %K
+d = ta.sma(k, 3)        // Smooth %D
+
+momentumBullish = k > d and k > 40
+momentumBearish = k < d and k < 60
+
+// --- 6. Dynamic Session Median ---
+var float sessionMid = na
+if ta.change(time("D"))
+    sessionMid := hl2
+else
+    sessionMid := (ta.highest(high, 50) + ta.lowest(low, 50)) / 2
+
+// --- 7. Strategy Logic ---
+bullish = close > ma and rsiVal > 50 and macdLine > signalLine and volatilityExpansion and close > sessionMid and momentumBullish
+bearish = close < ma and rsiVal < 50 and macdLine < signalLine and volatilityExpansion and close < sessionMid and momentumBearish
+
+// --- Visuals ---
+bgcolor(bullish ? color.new(color.green, 85) : bearish ? color.new(color.red, 85) : na)
+plot(ma, color=color.new(color.blue, 0), title="Trend MA")
+plot(sessionMid, title="Session Median", color=color.new(#81767e, 50), style=plot.style_linebr)
+
+plot(showSR ? r1_level : na, "Resistance 1", color=color.new(color.red, 40), style=plot.style_stepline)
+plot(showSR ? s1_level : na, "Support 1", color=color.new(color.green, 40), style=plot.style_stepline)
+
+// Labels
+if barstate.islast and showSR
+    label.new(bar_index + 2, r1_level, "SPX R1: " + str.tostring(r1_level, "#.##"), color=color.red, textcolor=color.white, style=label.style_label_left)
+    label.new(bar_index + 2, s1_level, "SPX S1: " + str.tostring(s1_level, "#.##"), color=color.green, textcolor=color.white, style=label.style_label_left)
+
+plotshape(bullish, title="Call Signal", location=location.belowbar, color=color.green, style=shape.labelup, text="CALL")
+plotshape(bearish, title="Put Signal", location=location.abovebar, color=color.red, style=shape.labeldown, text="PUT")
+
+// --- 8. Real-Time Dashboard ---
+var table statusTable = table.new(position.top_right, 1, 1)
+if barstate.islast
+    table.cell(statusTable, 0, 0, bullish ? "SPX: BULLISH" : bearish ? "SPX: BEARISH" : "WAITING...", 
+         bgcolor = bullish ? color.green : bearish ? color.red : color.gray, 
+         text_color = color.white)
