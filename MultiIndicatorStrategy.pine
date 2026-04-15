@@ -1,5 +1,5 @@
 //@version=5
-strategy("Gemini Multi-Indicator Strategy", overlay=true, initial_capital=10000)
+strategy("Gemini Clean Labels Strategy", overlay=true, initial_capital=10000)
 
 // --- INPUTS ---
 emaFastLen = input.int(9, "EMA Fast")
@@ -15,27 +15,41 @@ rsi = ta.rsi(close, rsiLen)
 [macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
 
 // --- LOGIC ---
-// Buy: Fast EMA > Slow EMA + RSI > 50 + MACD Bullish Cross
-buySignal = ta.crossover(emaFast, emaSlow) and rsi > 50 and macdLine > signalLine
-// Short: Fast EMA < Slow EMA + RSI < 50 + MACD Bearish Cross
+buySignal  = ta.crossover(emaFast, emaSlow) and rsi > 50 and macdLine > signalLine
 shortSignal = ta.crossunder(emaFast, emaSlow) and rsi < 50 and macdLine < signalLine
 
-// --- EXECUTION & ALERTS ---
+// --- CALCS ---
+// We use 'ta.atr(14)' to calculate a "buffer" space so the label floats 
+// away from the candle regardless of how volatile the stock is.
+buffer = ta.atr(14) * 1.5
+
+// --- EXECUTION & CLEAN LABELS ---
 if (buySignal)
     strategy.entry("Long", strategy.long)
-    alert("BUY ALERT: Indicators aligned bullish for " + syminfo.ticker, alert.freq_once_per_bar)
+    label.new(bar_index, low - buffer, 
+         text="🚀 BUY ENTRY: " + str.tostring(close, "#.##") + 
+              "\n🎯 TARGET (TP): " + str.tostring(close * (1 + tpPercent), "#.##") + 
+              "\n🛡️ SAFETY (SL): " + str.tostring(close * (1 - slPercent), "#.##"), 
+         color=color.new(color.green, 10), 
+         textcolor=color.white, 
+         style=label.style_label_up,
+         size=size.normal)
 
 if (shortSignal)
     strategy.entry("Short", strategy.short)
-    alert("SHORT ALERT: Indicators aligned bearish for " + syminfo.ticker, alert.freq_once_per_bar)
+    label.new(bar_index, high + buffer, 
+         text="🔻 SHORT ENTRY: " + str.tostring(close, "#.##") + 
+              "\n🎯 TARGET (TP): " + str.tostring(close * (1 - tpPercent), "#.##") + 
+              "\n🛡️ SAFETY (SL): " + str.tostring(close * (1 + slPercent), "#.##"), 
+         color=color.new(color.red, 10), 
+         textcolor=color.white, 
+         style=label.style_label_down,
+         size=size.normal)
 
-// --- EXIT STRATEGY (SL/TP) ---
-if (strategy.position_size > 0)
-    strategy.exit("Long Exit", "Long", limit=strategy.position_avg_price * (1 + tpPercent), stop=strategy.position_avg_price * (1 - slPercent))
+// --- EXIT STRATEGY ---
+strategy.exit("Long Exit", "Long", limit=strategy.position_avg_price * (1 + tpPercent), stop=strategy.position_avg_price * (1 - slPercent))
+strategy.exit("Short Exit", "Short", limit=strategy.position_avg_price * (1 - tpPercent), stop=strategy.position_avg_price * (1 + slPercent))
 
-if (strategy.position_size < 0)
-    strategy.exit("Short Exit", "Short", limit=strategy.position_avg_price * (1 - tpPercent), stop=strategy.position_avg_price * (1 + slPercent))
-
-// Plotting for visual confirmation
-plot(emaFast, color=color.blue, title="Fast EMA")
-plot(emaSlow, color=color.orange, title="Slow EMA")
+// Plotting the lines thinner so they don't clutter the view
+plot(emaFast, color=color.new(color.blue, 50), title="Fast EMA")
+plot(emaSlow, color=color.new(color.orange, 50), title="Slow EMA")
