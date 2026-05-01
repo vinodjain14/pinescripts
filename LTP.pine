@@ -1,0 +1,53 @@
+//@version=5
+indicator("LTP: SPY Pre-Market Levels & Alerts", overlay=true)
+
+// --- 1. AUTOMATED PRE-MARKET LEVELS ---
+is_new_day = ta.change(time("D"))
+is_premarket = not na(time("1", "0400-0930:23456")) // Pre-market hours
+
+var float preHigh = na
+var float preLow = na
+
+if is_new_day
+    preHigh := na
+    preLow := na
+
+if is_premarket
+    preHigh := na(preHigh) ? high : math.max(preHigh, high)
+    preLow := na(preLow) ? low : math.min(preLow, low)
+
+// Plot the Levels (Tells You WHERE)
+plot(preHigh, color=color.yellow, style=plot.style_linebr, title="Pre-Market High")
+plot(preLow, color=color.yellow, style=plot.style_linebr, title="Pre-Market Low")
+
+// --- 2. TREND FILTER (EMA 50) ---
+ema50 = ta.ema(close, 50)
+isUpTrend = close > ema50
+isDownTrend = close < ema50
+
+// --- 3. PATIENCE CANDLE (Tells You WHEN) ---
+// Detection of small-bodied "indecision" candles near levels
+bodySize = math.abs(open - close)
+avgBody = ta.sma(bodySize, 20)
+isPatienceCandle = bodySize < (avgBody * 0.6) 
+
+// Proximity to Levels
+//nearHigh = math.abs(high - preHigh) < (preHigh * 0.0005)
+//nearLow = math.abs(low - preLow) < (preLow * 0.0005)
+nearHigh = math.abs(high - preHigh) < 0.20
+
+nearLow = math.abs(low - preLow) < 0.20
+
+// --- LOGIC: LTP EXECUTION ---
+longSignal = isUpTrend and nearLow and isPatienceCandle
+shortSignal = isDownTrend and nearHigh and isPatienceCandle
+
+// Visuals
+plotshape(longSignal, "LTP Long", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(shortSignal, "LTP Short", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// Alerts
+if longSignal
+    alert("LTP Long: Patience Candle at Pre-Market Low", alert.freq_once_per_bar_close)
+if shortSignal
+    alert("LTP Short: Patience Candle at Pre-Market High", alert.freq_once_per_bar_close)
