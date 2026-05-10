@@ -1,5 +1,5 @@
 //@version=5
-strategy("Gemini Clean Labels Strategy", overlay=true, initial_capital=10000)
+strategy("MultiIndicator 1D Chart Strategy", overlay=true, initial_capital=10000)
 
 // --- INPUTS ---
 emaFastLen = input.int(9, "EMA Fast")
